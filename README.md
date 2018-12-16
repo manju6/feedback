@@ -4,10 +4,15 @@
 
 ```bash
 # Install dependencies
-npm install
 
+#Server
+npm install
 # Start Express Server: http://localhost:5000
-npm start
+npm run dev (or) npm start
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+#Client
+cd client
+npm install
 
 # Start Vue DevServer: http://localhost:8080
 cd client
@@ -16,13 +21,13 @@ npm run serve
 # Build for production (Will build into server/public, ready for deployment)
 cd client
 npm run build
-
-
-## App Info
-
-## Author
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+#Inspecific
+npm i -D nodemon
+npm i -g @vue/cli
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+#Author
 Manjupriya
 
-
-### Version
+#Version
 1.0.0
