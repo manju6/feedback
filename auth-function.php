@@ -660,6 +660,59 @@ function etsis_authenticate_sso($login,$rememberme)
     }
 }
 
+
+function etsis_update_person_sso($user_data) {
+
+        $reg_person = $app->db->person()
+            ->select('person.personID,person.uname')
+            ->where('(person.uname = ?)',  $user_data->institutionEmail)
+            ->findOne();
+
+        $person = $app->db->person();
+            $person->prefix = if_null($user_data->prefix);
+            $person->fname = if_null($user_data->firstName);
+            $person->lname = if_null($user_data->lastName);
+            $person->mname = if_null($user_data->middleName);
+            $person->ssn =  if_null($user_data->ssn);
+            $person->veteran = if_null($user_data->veteran);
+            $person->ethnicity = if_null($user_data->ethnicity);
+            $person->dob = if_null($user_data->dob);
+            $person->gender = if_null($user_data->gender);
+            $person->emergency_contact = if_null($user_data->emergency_contact);
+            $person->emergency_contact_phone = if_null($user_data->emergency_contact_phone);
+            $person->status = if_null($user_data->status);
+            $person->tags = if_null($user_data->tags);
+            $person->where('personID = ?', $reg_person->personID);                    
+            $person->update();
+
+            $sso_addr = $app->db->address();
+            $sso_addr->address1 = $user_data->address1;
+            $sso_addr->address2 = $user_data->address2;
+            $sso_addr->city = $user_data->city;
+            $sso_addr->phone1 = $user_data->phone;
+            $sso_addr->email1 = $user_data->email;
+            $sso_addr->state = $user_data->state;
+            $sso_addr->zip = $user_data->zip;
+            $sso_addr->country = $user_data->country;
+            $sso_addr->where('personID = ?', $reg_person->personID); 
+            $sso_addr->update();
+    
+    $person_type = $user_data->roles[0];
+
+    if(strtolower($person_type)=='staff')
+    {
+        //etsis_insert_new_staff_sso($app, $_id, $approverId);
+    }
+    else if(strtolower($person_type)=='student')
+    {
+        //etsis_insert_new_student_sso($app, $_id, $approverId);
+    }
+
+            
+}
+
+
+
 function etsis_insert_new_person_sso($app)
 {    
 
