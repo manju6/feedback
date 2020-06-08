@@ -100,7 +100,8 @@ $app->match('GET|POST','/sso-login/', function () use($app)
         $context = stream_context_create($opts);
         $user_token = $app->req->get['user'];
         $master_url = 'http://23.99.141.44:3000/getUserDetails?user=';
-        $user_response = file_get_contents($master_url.$user_token, false, $context);
+        #$user_response = file_get_contents($master_url.$user_token, false, $context);
+        $user_response = '{"user": {"institutionEmail": "izviq2d2.5sm@20minutemail.it","prefix": "Mr", "firstName": "Alfredo", "lastName": "A", "institutionName": "AHEA", "roles": ["ROLE_USER"]}}';
         
         $user_response = json_decode($user_response);
         $user = $user_response->user;
