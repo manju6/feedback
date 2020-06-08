@@ -91,8 +91,6 @@ $app->match('GET|POST','/sso-login/', function () use($app)
 {  
     if ($app->req->isGet()) 
     {
-
-
         $opts = [
             "http" => [
                     "method" => "GET"
@@ -100,14 +98,24 @@ $app->match('GET|POST','/sso-login/', function () use($app)
                 ];
         
         $context = stream_context_create($opts);
+        $user_token = $app->req->get['user'];
+        $master_url = 'http://23.99.141.44:3000/getUserDetails?user=';
+        $user_response = file_get_contents($master_url.$user_token, false, $context);
         
-        // Open the file using the HTTP headers set above
-        
-        $file = file_get_contents('https://jsonplaceholder.typicode.com/todos/1', false, $context);
-        
-        $file = json_decode($file);
-        
-        //print_r($file);
+        $user_response = json_decode($user_response);
+        $user = $user_response->user;
+        $unmae = $user->institutionEmail;
+
+        if(etsis_isRegistedUser($unmae))
+        {
+            etsis_update_person_sso($user);
+            
+            etsis_authenticate_person_sso($unmae,'yes');          
+        }     
+        else
+        {           
+            etsis_insert_new_person_sso($app); 
+        }
 
         etsis_logger_activity_log_write('SSO-Authentication', 'Check Master Server',  $app->req->get['user'],"Is User Name Exist");
 
