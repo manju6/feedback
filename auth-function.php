@@ -560,10 +560,13 @@ function etsis_authenticate_person($login, $password, $rememberme)
 }
 
 
-// Manju - Login Validation Starts
-
-function etsis_isRegistedUser($login)
-{
+// SSO Changes Starts
+/**
+ * Checks if the user is already present 
+ * 
+ * @param string $login Person's username or email address.
+*/
+function etsis_isRegistedUser($login){
     $app = \Liten\Liten::getInstance();
     $regiteredUser = false;
 
@@ -585,9 +588,13 @@ function etsis_isRegistedUser($login)
     return $regiteredUser;
 }
 
-
-function etsis_authenticate_person_sso($login,$rememberme)
-{
+/**
+ * Authenticate user.
+ *
+ * @param string $login Person's username or email address.
+ * @param string $rememberme Whether to remember the person.
+*/
+function etsis_authenticate_person_sso($login,$rememberme){
         $app = \Liten\Liten::getInstance();
 
         if (empty($login)) {
@@ -614,9 +621,13 @@ function etsis_authenticate_person_sso($login,$rememberme)
     return $person;
 }
 
-
-function etsis_authenticate_sso($login,$rememberme)
-{
+/**
+ * Authenticate user.
+ * 
+ * @param string $login Person's username or email address.
+ * @param string $rememberme Whether to remember the person.
+ */
+function etsis_authenticate_sso($login,$rememberme){
     $app = \Liten\Liten::getInstance();
     try {
         $person = $app->db->person()
@@ -660,273 +671,218 @@ function etsis_authenticate_sso($login,$rememberme)
     }
 }
 
-
+/** Updates person table during login if user already present
+ *
+ * @param json $user_data user details json
+ * 
+ */
 function etsis_update_person_sso($user_data) {
+    $app = \Liten\Liten::getInstance();
+    $reg_person = $app->db->person()
+        ->select('person.personID,person.uname')
+        ->where('(person.uname = ?)',  $user_data->institutionEmail)
+        ->findOne();
 
-        $reg_person = $app->db->person()
-            ->select('person.personID,person.uname')
-            ->where('(person.uname = ?)',  $user_data->institutionEmail)
-            ->findOne();
+    //Update Person table
+    $person = $app->db->person();
+        $person->prefix = if_null($user_data->prefix);
+        $person->fname = if_null($user_data->firstName);
+        $person->lname = if_null($user_data->lastName);
+        $person->mname = if_null($user_data->middleName);
+        $person->veteran = 0;
+        $person->gender = 'M';
+        $person->status = 'A';
+        $person->where('personID = ?', $reg_person->personID);                    
+        $person->update();
 
-        $person = $app->db->person();
-            $person->prefix = if_null($user_data->prefix);
-            $person->fname = if_null($user_data->firstName);
-            $person->lname = if_null($user_data->lastName);
-            $person->mname = if_null($user_data->middleName);
-            $person->ssn =  if_null($user_data->ssn);
-            $person->veteran = if_null($user_data->veteran);
-            $person->ethnicity = if_null($user_data->ethnicity);
-            $person->dob = if_null($user_data->dob);
-            $person->gender = if_null($user_data->gender);
-            $person->emergency_contact = if_null($user_data->emergency_contact);
-            $person->emergency_contact_phone = if_null($user_data->emergency_contact_phone);
-            $person->status = if_null($user_data->status);
-            $person->tags = if_null($user_data->tags);
-            $person->where('personID = ?', $reg_person->personID);                    
-            $person->update();
-
-            $sso_addr = $app->db->address();
-            $sso_addr->address1 = $user_data->address1;
-            $sso_addr->address2 = $user_data->address2;
-            $sso_addr->city = $user_data->city;
-            $sso_addr->phone1 = $user_data->phone;
-            $sso_addr->email1 = $user_data->email;
-            $sso_addr->state = $user_data->state;
-            $sso_addr->zip = $user_data->zip;
-            $sso_addr->country = $user_data->country;
-            $sso_addr->where('personID = ?', $reg_person->personID); 
-            $sso_addr->update();
-    
-    $person_type = $user_data->roles[0];
-
-    if(strtolower($person_type)=='staff')
-    {
-        //etsis_insert_new_staff_sso($app, $_id, $approverId);
-    }
-    else if(strtolower($person_type)=='student')
-    {
-        //etsis_insert_new_student_sso($app, $_id, $approverId);
-    }
-
-            
+    //Update Address Table
+    $sso_addr = $app->db->address();
+        $sso_addr->address1 = 'NA';
+        $sso_addr->address2 = 'NA';
+        $sso_addr->city = 'NA';
+        $sso_addr->email1 = if_null($user_data->institutionEmail);
+        $sso_addr->where('personID = ?', $reg_person->personID); 
+        $sso_addr->update();            
 }
 
+/** Insert new data into person table during login and perform login
+ *
+ * @param json $user_data user details json
+ */
+function etsis_insert_new_person_sso($user_data){
+    
+    // $AppoverPerson = $app->db->person()
+    //     ->select('person.personID,person.uname')
+    //     ->where('(person.uname = ?)', ['SSO'])
+    //     ->findOne();
 
+    // $approverId = $AppoverPerson->personID;
+    $app = \Liten\Liten::getInstance();
+    $approverId = 1;
 
-function etsis_insert_new_person_sso($app)
-{    
+    $user_role = $user_data->roles[0];
+    if($user_role == 'ROLE_USER'){
+        $personType = 'student';
+    } else{
+        $personType = 'staff';
+    }
 
-    $AppoverPerson = $app->db->person()
-            ->select('person.personID,person.uname')
-            ->where('(person.uname = ?)', ['SSO'])
-            ->findOne();
-
-    $approverId = $AppoverPerson->personID;
+    etsis_logger_activity_log_write('SSO-Authentication', 'etsis_insert_new_person_sso',  $user_data->institutionEmail, "Adding New User");
 
     $passSuffix = 'etSIS*';
-    if ($app->req->isPost()) {
-        try {
+    try {
+          
+        $password = 'myaccount' . $passSuffix;
+
+        // Insert New Person Record
+        $person = $app->db->person();
+        $person->uname = $user_data->institutionEmail;
+        $person->personType = $personType;
+        $person->prefix = $user_data->prefix;
+        $person->fname = $user_data->firstName;
+        $person->lname = $user_data->lastName;
+        $person->email = $user_data->institutionEmail;
+        $person->veteran = 0;
+        $person->gender = 'M';
+        $person->status = 'A';//$user_data->status;
+        $person->tags = if_null($user_data->tags);
+        $person->approvedBy = $approverId;
+        $person->approvedDate = \Jenssegers\Date\Date::now();
+        $person->password = etsis_hash_password($password);
+
+        /**
+         * Fires before person record is created.
+         *
+         * @since 6.1.07
+         */
+        $app->hook->do_action('pre_save_person');
+
+        /**
+         * Fires during the saving/creating of an person record.
+         * @since 6.1.10
+         * @param array $person
+         * Person data object.
+         */
+        $app->hook->do_action('save_person_db_table', $person);
+
+        $person->save();
             
-            $dob = str_replace(['-', '_', '/', '.'], '', $app->req->post['dob']); //yyyy-mm-dd
-            $ssn = str_replace(['-', '_', '.'], '', $app->req->post['ssn']);
+        $_id = $person->lastInsertId();
+        //$personType =  'staff';
 
-            if ($app->req->post['ssn'] > 0) {
-                $password = $ssn . $passSuffix;
-            } elseif (!empty($app->req->post['dob'])) {
-                $password = $dob . $passSuffix;
-            } else {
-                $password = 'myaccount' . $passSuffix;
-            }
+        // Insert Role of the Person 
+        $role = $app->db->person_roles();
 
-           // Insert New Person Record
-            $person = $app->db->person();
-            $person->uname = $app->req->post['uname'];
-            $person->altID = if_null($app->req->post['altID']);
-            $person->personType = $app->req->post['personType'];
-            $person->prefix = $app->req->post['prefix'];
-            $person->fname = $app->req->post['fname'];
-            $person->lname = $app->req->post['lname'];
-            $person->mname = $app->req->post['mname'];
-            $person->email = $app->req->post['email'];
-            $person->ssn = $app->req->post['ssn'];
-            $person->veteran = $app->req->post['veteran'];
-            $person->ethnicity = $app->req->post['ethnicity'];
-            $person->dob = if_null($app->req->post['dob']);
-            $person->gender = $app->req->post['gender'];
-            $person->emergency_contact = $app->req->post['emergency_contact'];
-            $person->emergency_contact_phone = $app->req->post['emergency_contact_phone'];
-            $person->status = $app->req->post['status'];
-            $person->tags = if_null($app->req->post['tags']);
-            $person->approvedBy = $approverId;
-            $person->approvedDate = \Jenssegers\Date\Date::now();
-            $person->password = etsis_hash_password($password);
-
-            /**
-             * Fires before person record is created.
-             *
-             * @since 6.1.07
-             */
-            $app->hook->do_action('pre_save_person');
-
-            /**
-             * Fires during the saving/creating of an person record.
-             * @since 6.1.10
-             * @param array $person
-             * Person data object.
-             */
-            $app->hook->do_action('save_person_db_table', $person);
-
-            $person->save();
-            
-            $_id = $person->lastInsertId();            
-            
-            // Insert Role of the Person 
-            $role = $app->db->person_roles();
+        if(strtolower($personType)=='staff')
+        {
+            $roleID = 11;
             $role->insert([
                 'personID' => (int) $_id,
-                'roleID' => $app->req->post['roleID'],
+                'roleID' => $roleID,
                 'addDate' => \Jenssegers\Date\Date::now()
             ]);
-            
-            // Insert Address of the Person    
-            $sso_addr = $app->db->address();
-            $sso_addr->personID = (int) $_id;
-            $sso_addr->address1 = $app->req->post['address1'];
-            $sso_addr->address2 = $app->req->post['address2'];
-            $sso_addr->city = $app->req->post['city'];
-            $sso_addr->addDate = \Jenssegers\Date\Date::now();
-            $sso_addr->addedBy = $approverId;
-            $sso_addr->addressType = "P";  
-            $sso_addr->addressStatus = "C";     
-            $sso_addr->startDate = \Jenssegers\Date\Date::now();
-
-            $sso_addr->phone1 = $app->req->post['phone'];
-            $sso_addr->email1 = $app->req->post['email'];
-            $sso_addr->state = $app->req->post['state'];
-            $sso_addr->zip = $app->req->post['zip'];
-            $sso_addr->country = $app->req->post['country'];
-            $sso_addr->endDate = \Jenssegers\Date\Date::now();
-            $sso_addr->save();
-            etsis_logger_activity_log_write('SSO-Authentication', 'Insert-New-Person'.$approverId.$password, $_id ,$app->req->post['uname']);
-
-            // if (isset($app->req->post['sendemail']) && $app->req->post['sendemail'] == 'send') {
-
-            //     try {
-            //         Node::dispense('login_details');
-            //         $node = Node::table('login_details');
-            //         $node->uname = (string) $app->req->post['uname'];
-            //         $node->email = (string) $app->req->post['email'];
-            //         $node->personid = (int) $_id;
-            //         $node->fname = (string) $app->req->post['fname'];
-            //         $node->lname = (string) $app->req->post['lname'];
-            //         $node->password = (string) $password;
-            //         $node->altid = (string) $app->req->post['altID'];
-            //         $node->sent = (int) 0;
-            //         $node->save();
-            //     } catch (NodeQException $e) {
-            //         Cascade::getLogger('error')->error(sprintf('NODEQSTATE[%s]: %s', $e->getCode(), $e->getMessage()));
-            //     } catch (Exception $e) {
-            //         Cascade::getLogger('error')->error(sprintf('NODEQSTATE[%s]: %s', $e->getCode(), $e->getMessage()));
-            //     }
-            // }
-
-         
-
-            /**
-             * Fires after person record has been created.
-             *
-             * @since 6.1.07
-             * @param string $pass
-             *            Plaintext password.
-             * @param array $nae
-             *            Person data object.
-             */
-            $app->hook->do_action_array('post_save_person', [
-                $password,
-                $person
-            ]);
-
-            
-            //Add Staff / Student Record
-            $personType =  $app->req->post['personType'];
-            if(strtolower($personType)=='staff')
-            {
-                etsis_insert_new_staff_sso($app, $_id, $approverId);
-            }
-            else if(strtolower($personType)=='student')
-            {
-                etsis_insert_new_student_sso($app, $_id, $approverId);
-            }
-            etsis_authenticate_person_sso($app->req->post['uname'],$app->req->post['rememberme']);
-           // _etsis_flash()->success(_t('200 - Success: Ok. If checked `Send username & password to the user`, email has been sent to the queue.'), get_base_url() . 'person' . '/' . (int) $_id . '/');
-            
-        } catch (NotFoundException $e) {
-            Cascade::getLogger('error')->error($e->getMessage());
-            _etsis_flash()->error(_etsis_flash()->notice(409));
-        } catch (ORMException $e) {
-            Cascade::getLogger('error')->error($e->getMessage());
-            _etsis_flash()->error(_etsis_flash()->notice(409));
-        } catch (Exception $e) {
-            Cascade::getLogger('error')->error($e->getMessage());
-            _etsis_flash()->error(_etsis_flash()->notice(409));
         }
+        else if(strtolower($personType)=='student')
+        {
+            $roleID = 12;
+            $role->insert([
+                'personID' => (int) $_id,
+                'roleID' => $roleID,
+                'addDate' => \Jenssegers\Date\Date::now()
+            ]);
+        }    
+            
+        // Insert Address of the Person    
+        $sso_addr = $app->db->address();
+        $sso_addr->personID = (int) $_id;
+        $sso_addr->address1 = "NA";
+        $sso_addr->address2 = "NA";
+        $sso_addr->city = "NA";
+        $sso_addr->addDate = \Jenssegers\Date\Date::now();
+        $sso_addr->addedBy = $approverId;
+        $sso_addr->addressType = "P";  
+        $sso_addr->addressStatus = "C";     
+        $sso_addr->startDate = \Jenssegers\Date\Date::now();
+
+        $sso_addr->phone1 = "NA";
+        $sso_addr->email1 = $user_data->institutionEmail;
+        $sso_addr->state = "NA";
+        $sso_addr->zip = "NA";
+        $sso_addr->country = "NA";
+        $sso_addr->endDate = \Jenssegers\Date\Date::now();
+        $sso_addr->save();
+        etsis_logger_activity_log_write('SSO-Authentication', 'Insert-New-Person', $_id ,$user_data->institutionEmail);
+
+        /**
+         * Fires after person record has been created.
+         *
+         * @since 6.1.07
+         * @param string $pass
+         *            Plaintext password.
+         * @param array $nae
+         *            Person data object.
+         */
+        $app->hook->do_action_array('post_save_person', [
+            $password,
+            $person
+        ]);
+
+            
+        //Add Staff / Student Record
+        if(strtolower($personType)=='staff')
+        {
+            etsis_insert_new_staff_sso($user_data, $_id, $approverId, $app);
+        }
+        else if(strtolower($personType)=='student')
+        {
+            etsis_insert_new_student_sso($user_data, $_id, $approverId, $app);
+        }
+        etsis_authenticate_person_sso($user_data->institutionEmail,'yes');
+        // _etsis_flash()->success(_t('200 - Success: Ok. If checked `Send username & password to the user`, email has been sent to the queue.'), get_base_url() . 'person' . '/' . (int) $_id . '/');
+            
+    } catch (NotFoundException $e) {
+        Cascade::getLogger('error')->error($e->getMessage());
+        _etsis_flash()->error(_etsis_flash()->notice(409));
+    } catch (ORMException $e) {
+        Cascade::getLogger('error')->error($e->getMessage());
+        _etsis_flash()->error(_etsis_flash()->notice(409));
+    } catch (Exception $e) {
+        Cascade::getLogger('error')->error($e->getMessage());
+        _etsis_flash()->error(_etsis_flash()->notice(409));
     }
-
-    etsis_register_style('form');
-    etsis_register_style('selectize');
-    etsis_register_style('gridforms');
-    etsis_register_script('datepicker');
-    etsis_register_script('select2');
-    etsis_register_script('select');
-    etsis_register_script('gridforms');
-
-    // $app->view->display('person/add', [
-    //     'title' => 'Name and Address'
-    // ]);
 
 }
 
-function etsis_insert_new_student_sso($app, $id,$approverId)
-{
+/** Insert new data into student table during login
+ *
+ * @param json $user_data user details json
+ * @param int $id person id generated while inserting into person table
+ * @param int $approverId Super Admin ID 1 by default
+ * @param Object $app Liten Instance
+ */
+function etsis_insert_new_student_sso($user_data, $id,$approverId, $app){
 
         try {
-            $person = get_person_by('personID', $id);
-            if (_escape($person->ssn) > 0) {
-                $pass = str_replace('-', '', _escape($person->ssn));
-            } elseif (_escape($person->dob) != '0000-00-00') {
-                $pass = str_replace('-', '', _escape($person->dob));
-            } else {
-                $pass = 'myaccount';
-            }
-            // $degree = $app->db->acad_program()->where('acadProgCode = ?', _trim($app->req->post['acadProgCode']))->findOne();
-            // $appl = $app->db->application()->where('personID = ?', $id)->findOne();
 
             $student = $app->db->student();
             $student->stuID = $id;  
-            $student->status = $app->req->post['status'];
-            $student->tags = $app->req->post['tags'];
+            $student->status = 'A';
             $student->addDate = \Jenssegers\Date\Date::now();
             $student->approvedBy = $approverId;
             $student->save();
 
-            // $sacp1 = $app->db->sacp();
-            // $sacp1->stuID = $id;
-            // $sacp1->acadProgCode = $app->req->post['acadProgCode'];
-            // $sacp1->currStatus = 'A';
-            // $sacp1->statusDate = \Jenssegers\Date\Date::now();
-            // $sacp1->startDate = $app->req->post['startDate'];
-            // $sacp1->approvedBy = 1;
-            // $sacp1->antGradDate = $app->req->post['antGradDate'];
-            // $sacp1->advisorID = $app->req->post['advisorID'];
-            // $sacp1->catYearCode = $app->req->post['catYearCode'];
-            // $sacp1->save();
-
-
+            $sacp1 = $app->db->sacp();
+            $sacp1->stuID = $id;
+            $sacp1->acadProgCode = _trim('GMS.9000');
+            $sacp1->currStatus = 'A';
+            $sacp1->statusDate = \Jenssegers\Date\Date::now();
+            $sacp1->startDate = \Jenssegers\Date\Date::now();
+            $sacp1->approvedBy = $approverId;
+            $sacp1->save();
 
             $al = $app->db->stal();
             $al->stuID = $id;
-            $al->acadProgCode = _trim($app->req->post['acadProgCode']);
-            $al->acadLevelCode = _trim($app->req->post['acadLevelCode']);
+            $al->acadProgCode = _trim('GMS.9000');
             $al->save();
             
 
@@ -958,7 +914,7 @@ function etsis_insert_new_student_sso($app, $id,$approverId)
              */
             $app->hook->do_action('post_save_stu', $spro);
 
-            etsis_logger_activity_log_write('SSO-Authentication', 'Insert-New-Student', $id ,$app->req->post['uname']);      
+            etsis_logger_activity_log_write('SSO-Authentication', 'Insert-New-Student', $id ,$user_data->institutionEmail);      
             //_etsis_flash()->success(_etsis_flash()->notice(200), get_base_url() . 'stu/' . $id . '/');
         } catch (NotFoundException $e) {
             Cascade::getLogger('error')->error($e->getMessage());
@@ -971,214 +927,87 @@ function etsis_insert_new_student_sso($app, $id,$approverId)
             _etsis_flash()->error(_etsis_flash()->notice(409));
         }
     
-
-    // try {
-    //     $stu = $app->db->acad_program()
-    //             ->setTableAlias('a')
-    //             ->select('a.id,a.acadProgCode,a.acadProgTitle')
-    //             ->select('a.acadLevelCode,b.majorName,c.locationName')
-    //             ->select('d.schoolName,e.personID,e.startTerm,aclv.comp_months')
-    //             ->_join('major', 'a.majorCode = b.majorCode', 'b')
-    //             ->_join('location', 'a.locationCode = c.locationCode', 'c')
-    //             ->_join('school', 'a.schoolCode = d.schoolCode', 'd')
-    //             ->_join('application', 'a.acadProgCode = e.acadProgCode', 'e')
-    //             ->_join('student', 'e.personID = f.stuID', 'f')
-    //             ->_join('aclv', 'a.acadLevelCode = aclv.code')
-    //             ->where('e.personID = ?', $id)->_and_()
-    //             ->whereNull('f.stuID');
-
-    //     $q = $stu->find(function($data) {
-    //         $array = [];
-    //         foreach ($data as $d) {
-    //             $array[] = $d;
-    //         }
-    //         return $array;
-    //     });
-    // } catch (NotFoundException $e) {
-    //     Cascade::getLogger('error')->error($e->getMessage());
-    //     _etsis_flash()->error(_etsis_flash()->notice(409));
-    // } catch (ORMException $e) {
-    //     Cascade::getLogger('error')->error($e->getMessage());
-    //     _etsis_flash()->error(_etsis_flash()->notice(409));
-    // } catch (Exception $e) {
-    //     Cascade::getLogger('error')->error($e->getMessage());
-    //     _etsis_flash()->error(_etsis_flash()->notice(409));
-    // }
-
-    /**
-     * If the database table doesn't exist, then it
-     * is false and a 404 should be sent.
-     */
-    // if ($q === false) {
-
-    //     $app->view->display('error/404', ['title' => '404 Error']);
-    // }
-    /**
-     * If data is zero, redirect to the current
-     * student record.
-      */
-      //elseif (count($q) <= 0) {
-
-    //     etsis_redirect(get_base_url() . 'stu' . '/' . $id . '/');
-    // }
-    /**
-     * If we get to this point, the all is well
-     * and it is ok to process the query and print
-     * the results in a html format.
-     */ 
-    // else {
-
-    //     etsis_register_style('form');
-    //     etsis_register_style('selectize');
-    //     etsis_register_script('select');
-    //     etsis_register_script('select2');
-    //     etsis_register_script('datepicker');
-
-    //     $app->view->display('student/add', [
-    //         'title' => 'Create Student Record',
-    //         'student' => $q
-    //             ]
-    //     );
-    // }
 }
 
-function etsis_insert_new_staff_sso($app, $id,$approverId)
-{
-        $get_person = get_person( $id );
-        $get_staff = get_staff( $id );
+/** Insert new data into staff table during login
+ *
+ * @param json $user_data user details json
+ * @param int $id person id generated while inserting into person table
+ * @param int $approverId Super Admin ID 1 by default
+ * @param Object $app Liten Instance
+ */
+function etsis_insert_new_staff_sso($user_data, $id, $approverId, $app){
+    $get_person = get_person( $id );
+    $get_staff = get_staff( $id );
  
-            try {
-                $add_staff = $app->db->staff();
-                $add_staff->staffID = $id;
-
-                $add_staff->schoolCode = $app->req->post['schoolCode'];
-                $add_staff->buildingCode = $app->req->post['buildingCode'];
-                $add_staff->officeCode = $app->req->post['officeCode'];
-                $add_staff->office_phone = $app->req->post['office_phone'];
-                $add_staff->deptCode = $app->req->post['deptCode'];
-
-                $add_staff->status = $app->req->post['status'];
-                $add_staff->tags = $app->req->post['tags'] != '' ? $app->req->post['tags'] : NULL;
-                $add_staff->addDate = Jenssegers\Date\Date::now();
-                $add_staff->approvedBy = $approverId;
-
-                /**
-                 * Fires during the saving/creating of a staff record.
-                 *
-                 * @since 6.1.12
-                 * @param array $staff Staff object.
-                 */
-                $app->hook->do_action('save_staff_db_table', $add_staff);
-                $add_staff->save();
-               
-
-                $staff_meta = $app->db->staff_meta();
-                $staff_meta->jobStatusCode = $app->req->post['jobStatusCode'];
-                $staff_meta->jobID = $app->req->post['jobID'];
-                $staff_meta->staffID = $id;
-                $staff_meta->supervisorID = $app->req->post['supervisorID'];
-                $staff_meta->staffType = $app->req->post['staffType'];
-                $staff_meta->hireDate = $app->req->post['hireDate'];
-                $staff_meta->startDate = $app->req->post['startDate'];
-                $staff_meta->endDate = ($app->req->post['endDate'] != '' ? $app->req->post['endDate'] : NULL);
-                $staff_meta->addDate = Jenssegers\Date\Date::now();
-                $staff_meta->approvedBy = $approverId;
-                /**
-                 * Fires during the saving/creating of staff
-                 * meta data.
-                 *
-                 * @since 6.1.12
-                 * @param array $meta Staff meta object.
-                 */
-                $app->hook->do_action('save_staff_meta_db_table', $staff_meta);
-                $staff_meta->save();
-                /**
-                 * Is triggered after staff record has been created.
-                 * 
-                 * @since 6.1.12
-                 * @param mixed $staff Staff data object.
-                 */
-                $app->hook->do_action('post_save_staff', $add_staff);
-
-                /**
-                 * Is triggered after staff meta data is saved.
-                 * 
-                 * @since 6.1.12
-                 * @param mixed $staff Staff meta data object.
-                 */
-                $app->hook->do_action('post_save_staff_meta', $staff_meta);
-
-                etsis_logger_activity_log_write('SSO-Authentication', 'Insert-New-Staff', $id ,$app->req->post['uname']);               
-               // _etsis_flash()->success(_etsis_flash()->notice(200), get_base_url() . 'staff' . '/' . $id . '/');
-
-            } catch (NotFoundException $e) {
-                Cascade::getLogger('error')->error($e->getMessage());
-                _etsis_flash()->error(_etsis_flash()->notice(409));
-            } catch (ORMException $e) {
-                Cascade::getLogger('error')->error($e->getMessage());
-                _etsis_flash()->error(_etsis_flash()->notice(409));
-            } catch (Exception $e) {
-                Cascade::getLogger('error')->error($e->getMessage());
-                _etsis_flash()->error(_etsis_flash()->notice(409));
-            }
-        
+    try {
+        $add_staff = $app->db->staff();
+        $add_staff->staffID = $id;
+        $add_staff->status = 'A';
+        $add_staff->addDate = Jenssegers\Date\Date::now();
+        $add_staff->approvedBy = $approverId;
 
         /**
-         * If the database table doesn't exist, then it
-         * is false and a 404 should be sent.
+         * Fires during the saving/creating of a staff record.
+         *
+         * @since 6.1.12
+         * @param array $staff Staff object.
          */
-        if ($get_person == false) {
-
-            $app->view->display('error/404', ['title' => '404 Error']);
-        }
+        $app->hook->do_action('save_staff_db_table', $add_staff);
+        $add_staff->save();
+               
+        $staff_meta = $app->db->staff_meta();
+        $staff_meta->staffID = $id;
+        $staff_meta->staffType = 'STA';
+        $staff_meta->hireDate = Jenssegers\Date\Date::now();
+        $staff_meta->startDate = Jenssegers\Date\Date::now();
+        $staff_meta->endDate = Jenssegers\Date\Date::now();
+        $staff_meta->addDate = Jenssegers\Date\Date::now();
+        $staff_meta->approvedBy = $approverId;
+        
         /**
-         * If the query is legit, but there
-         * is no data in the table, then 404
-         * will be shown.
-         */ 
-        elseif (empty($get_person) == true) {
-
-            $app->view->display('error/404', ['title' => '404 Error']);
-        }
+         * Fires during the saving/creating of staff
+         * meta data.
+         *
+         * @since 6.1.12
+         * @param array $meta Staff meta object.
+         */
+        $app->hook->do_action('save_staff_meta_db_table', $staff_meta);
+        $staff_meta->save();
+        
         /**
-         * If data is zero, 404 not found.
-         */ 
-        elseif (_escape($get_person->personID) <= 0) {
+         * Is triggered after staff record has been created.
+         * 
+         * @since 6.1.12
+         * @param mixed $staff Staff data object.
+         */
+        $app->hook->do_action('post_save_staff', $add_staff);
 
-            $app->view->display('error/404', ['title' => '404 Error']);
-        }
         /**
-         * If staffID already exists, then redirect
-         * the user to the staff record.
-         */ 
-        elseif (_escape($get_staff->staffID) > 0) {
+         * Is triggered after staff meta data is saved.
+         * 
+         * @since 6.1.12
+         * @param mixed $staff Staff meta data object.
+         */
+        $app->hook->do_action('post_save_staff_meta', $staff_meta);
 
-            etsis_redirect(get_base_url() . 'staff' . '/' . _escape($get_staff->staffID) . '/');
-        }
-        /**
-         * If we get to this point, the all is well
-         * and it is ok to process the query and print
-         * the results in a html format.
-         */ 
-        else {
+        etsis_logger_activity_log_write('SSO-Authentication', 'Insert-New-Staff', $id ,$user_data->institutionEmail);               
+        // _etsis_flash()->success(_etsis_flash()->notice(200), get_base_url() . 'staff' . '/' . $id . '/');
 
-            etsis_register_style('form');
-            etsis_register_style('selectize');
-            etsis_register_script('select');
-            etsis_register_script('select2');
-            etsis_register_script('datepicker');
-
-            // $app->view->display('staff/add', [
-            //     'title' => get_name(_escape($get_person->personID)),
-            //     'person' => (array) $get_person
-            //     ]
-            // );
-        }
+    } catch (NotFoundException $e) {
+        Cascade::getLogger('error')->error($e->getMessage());
+        _etsis_flash()->error(_etsis_flash()->notice(409));
+    } catch (ORMException $e) {
+        Cascade::getLogger('error')->error($e->getMessage());
+        _etsis_flash()->error(_etsis_flash()->notice(409));
+    } catch (Exception $e) {
+        Cascade::getLogger('error')->error($e->getMessage());
+        _etsis_flash()->error(_etsis_flash()->notice(409));
+    }
+        
 }
 
-
-
-// Manju - Login Validation Ends
+// SSO Changes Ends
 
 function etsis_set_auth_cookie($person, $rememberme = '')
 {
