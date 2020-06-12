@@ -77,7 +77,7 @@ $app->match('GET|POST', '/login/', function () use($app) {
 });
 
 
-// Manju - Rest Call for SSO Starts
+// SSO Changes Starts
 
 $app->before('GET|POST', '/sso-login/', function() use($app) {
 
@@ -101,6 +101,7 @@ $app->match('GET|POST','/sso-login/', function () use($app)
         $user_token = $app->req->get['user'];
         $master_url = 'http://23.99.141.44:3000/getUserDetails?user=';
         $user_response = file_get_contents($master_url.$user_token, false, $context);
+        #$user_response = '{"user": {"institutionEmail": "rtui23423@20minutemail.it","prefix": "Mr", "firstName": "Alfi", "lastName": "Solomon", "institutionName": "AHEA", "roles": ["ROLE_USER"]}}';
         
         $user_response = json_decode($user_response);
         $user = $user_response->user;
@@ -108,17 +109,15 @@ $app->match('GET|POST','/sso-login/', function () use($app)
 
         if(etsis_isRegistedUser($unmae))
         {
-            etsis_update_person_sso($user);
-            
+            etsis_logger_activity_log_write('SSO-Authentication', 'User Validation',  $app->req->get['user'], "User already present");
+            etsis_update_person_sso($user);            
             etsis_authenticate_person_sso($unmae,'yes');          
         }     
         else
-        {           
-            etsis_insert_new_person_sso($app); 
+        {
+            etsis_logger_activity_log_write('SSO-Authentication', 'User Validation',  $unmae, "New User");
+            etsis_insert_new_person_sso($user); 
         }
-
-        etsis_logger_activity_log_write('SSO-Authentication', 'Check Master Server',  $app->req->get['user'],"Is User Name Exist");
-
 
     }
 
@@ -140,7 +139,7 @@ $app->match('GET|POST','/sso-login/', function () use($app)
 
 });
 
-// Manju - Rest Call for SSO Ends
+// SSO Changes Ends
 
 $app->post('/reset-password/', function () use($app) {
 
